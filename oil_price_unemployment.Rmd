@@ -1,0 +1,53 @@
+Structural Break for Oil Price Analysis
+=======================================================
+
+```{r, echo=FALSE}
+install.packages("changepoint")
+require(changepoint)
+
+setwd("/Users/Yue/Documents/meetup_doc/TorontoMachineLearningBookClub/data")
+
+# import data
+data_oil = read.csv("data_oil.csv")
+data_oil = data_oil[-nrow(data_oil),]
+
+# convert to time series data frame
+value = as.numeric(as.character(data_oil$VALUE))
+
+oil_ts = ts(value, frequency=12, start=c(2000,1))
+
+plot(oil_ts)
+
+meanvalue.PELT = cpt.mean(oil_ts, method="PELT") # mean chanepoints using PELT
+
+cpts(meanvalue.PELT) # list the changepoints. All observatioins are changes
+
+plot(meanvalue.PELT)
+
+meanvalue.BinSeg = cpt.mean(oil_ts, method="BinSeg") # need to increase Q to increase changepoints
+cpts(meanvalue.BinSeg)
+
+plot(meanvalue.BinSeg)
+
+# detect change in variance
+
+variancevalue =cpt.var(diff(oil_ts), method="PELT")
+
+cpts(variancevalue)
+
+plot(variancevalue)
+
+par(mfrow=c(2,1))
+
+plot(oil_ts)
+plot(variancevalue)
+
+variance_n_value = cpt.var(diff(oil_ts), method="SegNeigh", Q=6) # maxiumu 6 number of changepoints
+
+cpts(variance_n_value)
+
+# decompose time series into trend, seasonality and random component
+
+d = decompose(oil_ts)
+plot(d)
+```
