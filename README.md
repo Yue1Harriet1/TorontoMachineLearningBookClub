@@ -1,17 +1,13 @@
 # TorontoMachineLearningBookClub
 our implementation codes for our coding meet ups
 
-## Project Jam: Predict Alberta Suicide Rate
+## Project Jam: The Relationship between Oil Price and Unemployment Rate (2016 JAN, 2016 FEB)
 
-Challenges:
+2016 FEB:
 
-1. Only have access to yearly suicide rate from open data
-2. 
+Agenda:
 
-Process:
+(1) Find out why do we have to take the lag of the time series and how many lags we should take
 
-1. Simulate Suicide rate time series into monthly data
 
-    Candidate Algorithms: 
 
-    (1) AR<sub>1</sub>
