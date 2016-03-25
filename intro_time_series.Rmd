@@ -1,0 +1,248 @@
+---
+output: github_document
+---
+
+Introduction to Time Series Analysis
+========================================================
+
+### Workflow Overview of Univariate Time Series Analysis
+1. detect trend
+2. detect seasonality
+3. detect outliers
+4. detect long-run cycle
+5. assume constant variances
+6. detect abrupt changes in either level or variances
+
+```{r, echo=FALSE}
+
+
+
+setwd("/Users/Yue/Documents/meetup_doc/TorontoMachineLearningBookClub/data")
+
+# import data
+data_oil = read.csv("data_oil.csv")
+data_oil = data_oil[-nrow(data_oil),]
+
+# convert to time series format
+oil = as.numeric(as.character(data_oil$VALUE))
+oil_ts = ts(oil, frequency = 12, start=c(2000,1))
+
+plot(oil_ts)
+```
+
+Features of the plot:
+
+1. there is an increasing trend before 2008 / 2009 and another increasing trend before end of 2014
+
+2. hard to tell about seasonality
+
+3. no obvious outlier
+
+4. volatility/variances seem not to be constant - smaller before 2005; bigger after 2008 / 2009
+
+### Types of Stationary Univariate Time Series Models: forecast univariate time series future values
+
+1. AR(1) or AR(p):
+$X_t = \delta + \phi_1X_{t-1} + \epsilon_t$
+Assumptions:
+
+(1) $\epsilon_t$ is i.i.d. $N(0, \sigma_{\epsilon}^2)$: i.i.d. constant variances
+
+(2) $\epsilon_t$ is independent of $X$'s
+
+(3) $X$'s is random, not within control
+
+to determine if it is a AR(1) process, you can plot $X_t$ versus $X_{t-1}$
+
+```{r, echo=FALSE}
+oil_lag1 = diff(oil_ts, lag=1, differences = 1)
+plot(oil_ts[2:length(oil_ts)] ~ oil_lag1, main=paste('X_t', 'versus', 'X_{t-1}', sep=" "))
+```
+
+there does not seem to be a clear pattern between $X_t$ and $X_{t-1}$, when we try to fit OLS model between the 2:
+
+```{r, echo=FALSE}
+ar1 = lm(oil_ts[2:length(oil_ts)] ~ oil_lag1) 
+summary(ar1)
+```
+
+it confirms our assumption: p-value is not significant for the slope and $R^2$ is really low
+
+we also do residual plot versus fitted to check for $X_t$ and $\epsilon_t$ are independent
+
+```{r, echo=FALSE}
+plot(ar1)
+```
+
+we see that it is not completely independent and there are outliers
+
+2. Model 2: ARIMA(p, d, q) accounts for trend as well as seasonality
+
+Trend analysis:
+
+* for linear trend: use t as a predictor in regression
+
+* for quadratic trend: use $t$ and $t^2$
+
+* for seasonality: use indicator $S_j$ = 1 for observation in month/quarter j of the year
+
+Correlation Analysis:
+
+* $X_t$ can be related to past values: use ACF to find out correlation between lagged values
+
+* ACF plot on residuals: should not be significant indication of correlation after model fitting
+
+* ACF for $X_t$ and $X_{t-h}$ is the same for all $t$ in stationary series and should be symmetrical around h=0:
+  
+    * ACF for AR(1) exponentially decreases to 0 for positive coefficient; and alternatively exponentially decreases to 0 for negative coefficient
+    
+    * ACF for MA(1) = 0 for h > 1; only a spike at h=1
+    
+    * ACF for MA(2): 2 significant spikes at h = 1 and 2
+
+* PACF is the conditional correlation: helps a lot in identifying AR model: (while ACF is good for identifying MA model)
+
+* PACF shuts off (=0) beyond p for AR(p)
+    
+### Decomposition of a model: 
+
+$X_t = Trend + Seasonal + Random$ for constant seasonal variation
+
+$X_t = Trend*Seasonal*Random$ for seaonal variation increases over time
+
+Steps in Decomposition:
+
+1. estimate trend and de-trend:
+
+moving average
+
+```{r, echo=FALSE}
+trend = filter(oil_ts, filter=c(1/8, 1/4, 1/4, 1/8), sides=2)
+plot(oil_ts, type="b")
+lines(trend)
+```
+
+2. seasonality adjustment so they average to 0
+
+Example: additive decomposition:
+```{r, echo=FALSE}
+decomp = decompose(oil_ts, type="additive")
+plot(decomp)
+```
+
+Example: multiplicative decomposition:
+```{r, echo=FALSE}
+decomp = decompose(oil_ts, type="multiplicative")
+plot(decomp)
+```
+### Vector Autoregressive models VAR(p)
+
+Each variable is a linear function of past lags of itself and past lags of the other variables
+
+Examples of VAR(1):
+
+* $X_{t,1} = \alpha_1 + \phi_{11}X_{t-1,1} + \phi_{12}X_{t-1,2} + \phi_{13}X_{t-1,3} + \omega_{t,1}$
+
+same thing for $X_{t,2}$, $X_{t,3}$
+
+In general, for VAR(p) model, the first p lag of each variable in the system would be used as regression predictors for each variable.
+
+* Difference-Stationary Model:
+
+```{r}
+
+library(vars)
+library(astsa)
+head(cmort)
+head(tempr)
+head(part)
+
+plot.ts(cbind(cmort, tempr, part))
+summary(var(cbind(cmort, tempr, part), p=1, type="both"))
+```
+
+the above fits model $C_t = \mu + \phi_1t + \phi_2T_t + \phi_3P_t$ and so on
+
+To take a look on the 1st, 2nd, 3rd variables:
+```{r, echo=FALSE}
+acf(residuals(var(cbind(cmort, tempr, part), p=1, type="both"))[,1])
+acf(residuals(var(cbind(cmort, tempr, part), p=1, type="both"))[,2])
+acf(residuals(var(cbind(cmort, tempr, part), p=1, type="both"))[,3])
+```
+
+### Test for Correlated Errors
+
+Durbin-Watson test
+
+### Regression model to contain autocorrelated errors
+
+$$y_t = \beta_0 + \beta_1x_{1,t} + ... + \beta_kx_{k,t} + n_t$$
+
+$n_t$ follows ARIMA(p,d,q) model
+
+Assumptions: $y_t$ and all $X_t$ are stationary
+
+Steps:
+
+1. difference the non-stationary variables to make them stationary
+differenced models with ARMA errors are equivalent to original model with ARIMA errors
+
+2. Start a proxy model with ARIMA(2,0,0)(1,0,0)m errors for seasonal data
+estimate coefficients, calculate preliminary values for ARIMA errors and then select a more approriate ARMA model for errors and refit
+
+3. Check for white noise assumption
+
+4. Calculate AIC for the final model to determine the best predictors
+
+```{r, echo=FALSE}
+unemp = read.csv('/Users/Yue/Documents/meetup_doc/TorontoMachineLearningBookClub/data/Unemployment_Rate_alberta.csv')
+         
+head(unemp)   
+
+unemp = unemp[grep("20", unemp$When),]
+
+unemp_male_15over_ab = unemp[which(unemp$AgeGroup == "15 years and over" & unemp$Sex == "Both sexes"), "Alberta"]
+
+unemp_male_15over_ab = ts(unemp_male_15over_ab, frequency=12, start=c(2000,1))
+
+oil = as.numeric(as.character(data_oil$VALUE))
+oil_ts = ts(oil, frequency = 12, start=c(2000,1))
+oil_ts      
+
+plot(cbind(oil_ts, unemp_male_15over_ab))
+       
+print("Oil price is non-stationary")
+plot(oil_ts, type="o", col="blue", lty="dashed")
+print("Do a 1st degree differencing for oil price:")
+plot(diff(oil_ts,1), main="1st order differenced")
+print("check for ACF for 1st degree differencing")
+acf(diff(oil_ts,1))
+print("we are assuming AR(1) model for diff(oil_ts)")
+plot(diff(diff(oil_ts,1),1))
+print("it looks like the non-stationary trend is solved, but the non-stationary variances remain, to solve that, log transformation cannot be applied here because of NA produced")
+
+acf(diff(diff(oil_ts,1),1))
+                          
+print("kpss unit root test for stationarity")
+
+install.packages("tseries")
+library(tseries)
+kpss.test(diff(diff(oil_ts,1),1))
+print("p>0.1 infers no significant evidence to reject stationary null hypothesis")
+
+oil_ts_diff = diff(diff(oil_ts,1),1)
+             
+print("Transform Unemployment rate to stationary")
+plot(diff(unemp_male_15over_ab,1))
+acf(diff(unemp_male_15over_ab,1))
+kpss.test(diff(unemp_male_15over_ab,1))
+print("p>0.1 infers no significant evidence to reject stationary null hypothesis")
+
+unemp_diff = diff(unemp_male_15over_ab,1)
+
+print("we build a model with ARIMA errors")
+print("we shift oil price 2 times and unemp 1 time, hence the length of the time series is different")
+fit = Arima(unemp_diff[2:length(unemp_diff)], xreg=oil_ts_diff, order=c(2,0,0), seasonal=c(1,0,0))
+tsdisplay(arima.errors(fit), main="ARIMA errors")
+fit
+```
