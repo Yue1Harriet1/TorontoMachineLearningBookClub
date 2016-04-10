@@ -1,0 +1,193 @@
+---
+title: "Longitudinal Data Analysis General Framework"
+author: "Yue Harriet Huang"
+date: "March 25, 2016"
+output: html_document
+---
+install.packages("reshape2")
+install.packages("data.table")
+install.packages("lattice")
+install.packages("ggplot2")
+
+## Design:
+
+### * Repeated Measures: response measured repeatedly on a set of units (individuals)
+### * Balanced Dataset: each individual measured at the same set of ages
+### * Unbalanced dataset: each individual measured at different set of ages
+
+## Research questions we can answer:
+
+### * How does change of treatment (predictors) affect growth over time within the same individual
+
+### * How does change of treatment (predictors) affect growth between individuals (Control Group versus Test Group)
+
+```{r, echo=FALSE}
+
+#=== import data ===#
+
+path = "C:/Users/Yue/Documents/meetup_doc/oil_price_unemployment/TorontoMachineLearningBookClub/data"
+
+setwd(path)
+
+unemp = read.csv('Unemployment_Rate_alberta.csv')
+
+#head(unemp)
+
+#=== data only 15 years and over, Both sexes, after 2000 ===#
+
+pattern1 = '.over'
+ind1 = grep(pattern1, unemp$AgeGroup, perl = T)
+subset = unemp[ind1,]
+
+pattern2 = 'Both.'
+ind2 = grep(pattern2, subset$Sex, perl=T)
+subset = subset[ind2,]
+
+subset = subset[grep("20", subset$When),]
+
+subset$When = as.Date(as.character(subset$When), format = "%m/%d/%Y")
+
+#=== reshape wide to long ===#
+
+require(reshape2)
+require(data.table)
+
+subset = melt(subset, id.vars = c("When", "AgeGroup", "Sex"))
+
+setnames(subset, "variable", "Province")
+setnames(subset, "value", "Unemp")
+
+
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=10}
+
+#=== growth curve plot ===#
+
+require(lattice)
+
+xyplot(Unemp ~ When | factor(Province), data=subset, as.table=T)
+
+interaction.plot(subset$When, factor(subset$Province), subset$Unemp, col=(1:length(unique(subset$Province))), xlab="When", ylab="Unemployment Rate", main="Unemployment in Different Provinces")
+
+par(mfrow=c(1,2))
+plot(subset[subset$Province=="Alberta", 'Unemp'], main="Alberta", ylab = "Unemployment Rate", xlab="From 2000 to 2016 by Month")
+
+plot(subset[subset$Province=="Ontario", 'Unemp'], main="Ontario", ylab = "Unemployment Rate", xlab="From 2000 to 2016 by Month")
+
+dev.off()
+```
+
+## Observe from plots:
+
+### 1. Variability within individuals: usually correlated
+### 2. Variability between individuals (average quantity varies across individuals)
+
+
+## 1. Model Variability within individual over time: 1st level model
+
+### (1) Firstly try a linear model on each of the growth trajectory:
+#### Recall Assumptions of OLS linear model:
+
+    * independent between observations
+    
+#### which apparently does not make sense: 
+    
+    * clear nonlinearity in each of the growth curve
+    
+    * observations within an individual are correlated
+    
+    * but we can see that each curve has different intercept and slope
+
+```{r, echo=FALSE}
+
+xyplot(Unemp ~ When | factor(Province), data=subset, 
+  panel = function(x, y){
+    panel.xyplot(x, y)
+    panel.lmline(x, y)
+  }, as.table=T)
+
+          
+
+```
+
+## Choose Fixed Effects Model or Random Effects Model
+
+### Fixed Effects Model: 
+
+* Fixed model cannot generalize to new individuals in the population, only to 'new' observations from the same individuals. 
+In our case, this is appropriate, because Canada has a fixed number of provinces, we do not need to generalize to newer individuals (provinces) outside of our sample, otherwise we will use a Random effects model to generalized to the population.
+
+
+
+#### 1. Level 1: modeling growth within individual: 
+## $$y_{it} = \beta_{i0} + \beta_{i1}X_{it} + \epsilon_{it}$$
+#### 2. Level 2: modeling difference between individuals: allowing different $\beta_{i0}$ (intercept / level) and $\beta_{i1}$ (slope / rate of change) for different groups of individuals
+
+* From the sphaghetti plot above, we clearly see that whether it is a maritime (Newfoundland, PEI, NB, NS) - highest, or an eastern (Quebec, Ontario) - 2nd highest or a prairie (Saskatchenwan, Alberta, Manitoba) -- lowest or western province (BC) - 2nd lowest affects the level (intercept) of the plot, however, not so much of the slope (rate of change), so we model the slope as :
+
+## $$\beta_{i0} = \phi_{00} + \phi_{01}Location_{i} + \zeta_{0i}$$
+
+```{r, echo=FALSE}
+
+#=== Code Location ===#
+
+subset[subset$Province == "Alberta", "Location"] = "Prairie"
+subset[subset$Province == "BritishColumbia", "Location"] = "BC"
+subset[subset$Province == "Manitoba", "Location"] = "Prairie"
+subset[subset$Province == "NewBrunswick", "Location"] = "Maritime"
+subset[subset$Province == "NewfoundlandAndLabrador", "Location"] = "Maritime"
+subset[subset$Province == "NovaScotia", "Location"] = "Maritime"
+subset[subset$Province == "Ontario", "Location"] = "East"
+subset[subset$Province == "PrinceEdwardIsland", "Location"] = "Maritime"
+subset[subset$Province == "Quebec", "Location"] = "East"
+subset[subset$Province == "Saskatchewan", "Location"] = "Prairie"
+
+
+table(subset$Province, subset$Location)
+
+
+
+
+
+
+
+```
+
+
+## Time Series Clustering
+```{r, echo=FALSE}
+install.packages("TSclust")
+library(TSclust)
+data("synthetic.tseries")
+head(synthetic.tseries)
+# LONG TO WIDE format
+wide_data = reshape(subset, idvar = c("When"), timevar="Province", direction="wide")
+View(wide_data)
+ts = wide_data[colnames(wide_data)[agrep('Unemp',colnames(wide_data))]]
+dist = diss(ts, "INT.PER")
+clusters = cutree(hclust(dist), k=5)
+c_names = names(clusters)
+ts_t = data.frame(t(ts))
+
+for (c in c_names){
+  print(c)
+  print(clusters[c])
+  ts_t[c,]$cluster = clusters[[c]]
+  ts_t[c,'province'] = c
+  print(ts_t[c,])
+}
+
+# plot together with cluster result
+ts = melt(ts_t, id.vars=c('province', 'cluster'))
+
+
+
+interaction.plot()
+```
+
+idx = seq(0, 6.28, len=100)
+query = sin(idx)+runif(100)/10
+temp = cos(idx)
+idx
+query
