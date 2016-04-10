@@ -1,0 +1,97 @@
+---
+title: "Carl's Time Series Analysis"
+author: "Carl"
+date: "April 10, 2016"
+output: html_document
+---
+
+```{r}
+library('xts')
+library('forecast')
+library('rgl')
+library('TSclust')
+library('corrplot')
+
+oil = read.csv("oil.csv")
+colnames(oil) = c("date","oil")
+oil$date = as.Date(oil$date, format = "%d/%m/%Y")
+oil$date = as.POSIXct(oil$date)
+oil$oil = as.numeric(as.character(oil$oil))
+oil = xts(oil$oil,oil$date)
+
+
+unemp = read.csv("unemp.csv")
+unemp$AgeGroup == "15 years and over"
+colnames(unemp)
+
+unemp.f = unemp[unemp$AgeGroup == "15 years and over" ,]
+unemp.f= unemp.f[unemp.f$Sex == "Both sexes",]
+
+colnames(unemp)
+provinces = colnames(unemp)[c(4:14)]
+unemp = unemp.f[,c("When",provinces)]
+
+colnames(unemp) = c("date",provinces)
+class(unemp$date)
+
+unemp$date = as.Date(unemp$date, format = "%m/%d/%Y")
+unemp$date = as.POSIXct(unemp$date)
+unemp[,provinces] = apply(unemp[,provinces],2,function(x) as.numeric(as.character(x)))
+unemp = xts(unemp[,provinces],unemp$date)
+colnames(unemp) = provinces
+
+
+for(i in 1:length(provinces)){
+  
+  if(i == 1){
+    data = merge.xts(to.monthly(oil)[,4],to.monthly(unemp[,provinces[i]])[,4])
+  }
+  if(i > 1){
+    data = merge.xts(data,to.monthly(unemp[,provinces[i]])[,4])
+  }
+}
+colnames(data) = c("oil", provinces)
+
+data = na.omit(data)
+plot(data[,"Alberta"])
+
+cor(data[,"Alberta"],data[,"Ontario"])
+M = cor(data[,provinces])
+corrplot(M)
+
+cor(data[130:193,"Alberta"],data[130:193,"Ontario"])
+M = cor(data[,provinces])
+corrplot(M)
+
+
+
+tsdist = diss(t(data[,provinces]) , "ACF", p=0.05)
+hc <- hclust(tsdist)
+plot(hc)
+
+fit4 = stl(data[,"Alberta"], s.window= "periodic")
+plot(fit4$time.series[,"trend"], ylim=c(0,10), col = "red", main = "Comparison", xlab = c("time"), ylab = c("Unemployment"))
+
+fit5 = stl(data[,"Ontario"], s.window= "periodic")
+lines(fit5$time.series[,"trend"], col = "blue")
+
+legend("bottomright",c("Ontario","Alberta"),lty=c(1,1),lwd=c(2.5,2.5),col=c("blue","red")) 
+
+
+library('vars')
+
+model = VAR(data[,c("oil","Alberta")])
+plot(model)
+pred = predict(model, n.ahead =20)
+plot(pred)
+
+
+library('gam')
+library('nlme')
+library('mgcv')
+gam.object = gam(Alberta ~ oil, data=data[,c("oil","Alberta")], na=na.gam.replace)
+summary(gam.object)
+plot(gam.object)
+
+```
+
